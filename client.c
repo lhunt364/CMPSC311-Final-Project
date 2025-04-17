@@ -10,7 +10,6 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <pthread.h>
-//for gui
 #include <gtk/gtk.h>
 
 // server connection details
