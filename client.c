@@ -1,4 +1,4 @@
-//Name: Brayden Aubry
+//Name: Brayden Aubry, Logan Hunt, Khalil Balawi, Brent Lamplugh, Sangaa Chatterjee
 //Class: CMPSC 311
 //Assignment: Project (Client Side)
 //Date: IDK
@@ -7,80 +7,74 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <winsock2.h>     // windows socket functions
-#include <ws2tcpip.h>     // extra socket utilities
-#include <windows.h>      // needed for winmain types
-#include <process.h>      // for creating threads
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <pthread.h>
 
+// server connection details
 #define SERVER_IP "127.0.0.1"
 #define SERVER_PORT 8080
 #define MAX_MSG_LEN 1024
 
-SOCKET sockfd;
+int sockfd; // socket file descriptor
 
-// thread that receives messages from the server
-unsigned __stdcall receive_messages(void* arg) {
+// thread to receive messages from server
+void* receive_messages(void* arg) {
     char buffer[MAX_MSG_LEN];
 
     while (1) {
         int bytes = recv(sockfd, buffer, sizeof(buffer) - 1, 0);
         if (bytes <= 0) {
-            printf("disconnected from server.\n");
-            closesocket(sockfd);
-            WSACleanup();
+            printf("server disconnected.\n");
+            close(sockfd);
             exit(1);
         }
 
         buffer[bytes] = '\0';
-        printf("\n[server]: %s", buffer);
+        printf("\n%s", buffer);  // message already includes username
         printf("you: ");
         fflush(stdout);
     }
-    return 0;
+
+    return NULL;
 }
 
 int main() {
-    WSADATA wsa;
     struct sockaddr_in server_addr;
     char message[MAX_MSG_LEN];
-    uintptr_t recv_thread;
-
-    // start winsock
-    if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
-        printf("winsock init failed. error: %d\n", WSAGetLastError());
-        return 1;
-    }
+    char username[50];
+    pthread_t recv_thread;
 
     // create socket
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (sockfd == INVALID_SOCKET) {
-        printf("socket creation failed. error: %d\n", WSAGetLastError());
-        return 1;
+    if (sockfd < 0) {
+        perror("socket creation failed");
+        exit(1);
     }
 
-    // setup server address
+    // configure server address
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(SERVER_PORT);
     server_addr.sin_addr.s_addr = inet_addr(SERVER_IP);
 
     // connect to server
     if (connect(sockfd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
-        printf("connection failed. error: %d\n", WSAGetLastError());
-        return 1;
+        perror("connection failed");
+        exit(1);
     }
 
     printf("connected to server at %s:%d\n", SERVER_IP, SERVER_PORT);
 
-    // create thread to receive messages
-    recv_thread = _beginthreadex(NULL, 0, receive_messages, NULL, 0, NULL);
-    if (recv_thread == 0) {
-        perror("thread failed");
-        closesocket(sockfd);
-        WSACleanup();
-        return 1;
-    }
+    // prompt for username and send it to server
+    printf("enter your username: ");
+    fgets(username, sizeof(username), stdin);
+    username[strcspn(username, "\n")] = '\0';  // remove newline
+    send(sockfd, username, strlen(username), 0);
 
-    // main loop to send messages
+    // start thread to receive messages
+    pthread_create(&recv_thread, NULL, receive_messages, NULL);
+
+    // loop to send messages
     while (1) {
         printf("you: ");
         if (fgets(message, MAX_MSG_LEN, stdin) != NULL) {
@@ -88,14 +82,5 @@ int main() {
         }
     }
 
-    closesocket(sockfd);
-    WSACleanup();
     return 0;
 }
-
-// fixes linker error for windows gui mode
-#ifdef _WIN32
-int WinMain(HINSTANCE hInst, HINSTANCE hPrevInst, LPSTR args, int ncmdshow) {
-    return main();
-}
-#endif
