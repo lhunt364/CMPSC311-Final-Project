@@ -10,11 +10,16 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <pthread.h>
+//for gui
+#include <gtk/gtk.h>
 
 // server connection details
 #define SERVER_IP "127.0.0.1"
 #define SERVER_PORT 8080
 #define MAX_MSG_LEN 1024
+
+// application details
+#define APP_NAME "Chat App"
 
 int sockfd; // socket file descriptor
 
@@ -39,6 +44,15 @@ void* receive_messages(void* arg) {
     return NULL;
 }
 
+// sets up the app when its activated (started)
+static void on_activate(GtkApplication *app, gpointer user_data)
+{
+    GtkWidget *window = gtk_application_window_new(app);
+    gtk_window_set_default_size(GTK_WINDOW(window), 300, 200);
+    gtk_window_set_title(GTK_WINDOW(window), APP_NAME);
+    gtk_window_present(GTK_WINDOW(window));
+}
+
 int main() {
     struct sockaddr_in server_addr;
     char message[MAX_MSG_LEN];
@@ -56,6 +70,22 @@ int main() {
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(SERVER_PORT);
     server_addr.sin_addr.s_addr = inet_addr(SERVER_IP);
+
+
+
+
+
+    // set up app window
+    GtkApplication *app;
+
+    app = gtk_application_new(NULL, G_APPLICATION_DEFAULT_FLAGS);
+    g_signal_connect(app, "activate", G_CALLBACK(on_activate), NULL); // app is set up in the on_activate function
+    g_application_run(G_APPLICATION(app), 0, NULL);
+    g_object_unref(app);
+
+
+
+
 
     // connect to server
     if (connect(sockfd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
