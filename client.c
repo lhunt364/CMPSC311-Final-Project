@@ -47,9 +47,26 @@ void* receive_messages(void* arg) {
 static void on_activate(GtkApplication *app, gpointer user_data)
 {
     GtkWidget *window = gtk_application_window_new(app);
-    gtk_window_set_default_size(GTK_WINDOW(window), 300, 200);
+    gtk_window_set_default_size(GTK_WINDOW(window), 900, 800);
     gtk_window_set_title(GTK_WINDOW(window), APP_NAME);
     gtk_window_present(GTK_WINDOW(window));
+
+    // login screen code - GTK
+    GtkWidget *button;
+    GtkWidget *box;
+    GtkWidget *entry;
+
+    box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0); // button allignment
+    gtk_widget_set_halign(box, GTK_ALIGN_CENTER);
+    gtk_widget_set_valign(box, GTK_ALIGN_CENTER);
+    gtk_window_set_child(GTK_WINDOW(window), box);
+
+    entry = gtk_entry_new();
+
+    button = gtk_button_new_with_label("Login");
+    g_signal_connect(button, "clicked", G_CALLBACK(button_test), entry);
+
+    gtk_box_append(GTK_BOX(box), button);
 }
 
 int main() {
