@@ -1,15 +1,22 @@
+
 //Name: Brayden Aubry, Logan Hunt, Khalil Balawi, Brent Lamplugh, Sangaa Chatterjee
 //Class: CMPSC 311
 //Assignment: Project (Client Side)
 //Date: IDK
 
 
+#ifdef _WIN32
+    #include <winsock2.h>
+    #include <ws2tcpip.h>
+#else
+    #include <arpa/inet.h>
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-#include <arpa/inet.h>
 #include <pthread.h>
+#include <unistd.h>
 #include <gtk/gtk.h>
 
 // server connection details
@@ -21,6 +28,8 @@
 #define APP_NAME "Chat App"
 
 int sockfd; // socket file descriptor
+char username[50]; //username variable to store username entry from GUI
+
 
 // thread to receive messages from server
 void* receive_messages(void* arg) {
@@ -41,6 +50,18 @@ void* receive_messages(void* arg) {
     }
 
     return NULL;
+}
+
+
+//function to retrieve the username entry from the text box when the login_button is clicked
+static void username_retrieve(GtkButton *button, gpointer data) {
+    //retrieve text from entry to store as client username
+    GtkEntry *entry = GTK_ENTRY(data);
+    const char *username = gtk_editable_get_text(GTK_EDITABLE(entry));
+    //test
+    char *user_text = g_strdup(username);
+    g_print("Username: %s\n", user_text);
+    g_free(user_text);
 }
 
 static void on_login_button_clicked(GtkButton *button, gpointer data)
@@ -66,7 +87,7 @@ static void on_activate(GtkApplication *app, gpointer user_data)
     // build login page
     GtkWidget *login_box;
     GtkWidget *login_button;
-    GtkWidget *entry;
+    GtkWidget *entry; //username entry
 
     login_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5); // button allignment
     gtk_widget_set_halign(login_box, GTK_ALIGN_CENTER);
@@ -74,7 +95,9 @@ static void on_activate(GtkApplication *app, gpointer user_data)
     entry = gtk_entry_new();
     login_button = gtk_button_new_with_label("Login");
 
-    g_signal_connect(login_button, "clicked", G_CALLBACK(on_login_button_clicked), stack);
+    //login_button functions
+    g_signal_connect(login_button, "clicked", G_CALLBACK(on_login_button_clicked), stack); //calls on-login_button_fixed() when the button is clicked
+    g_signal_connect(login_button, "clicked", G_CALLBACK(username_retrieve), entry); //calls username_retrieve() when the button is clicked
 
     gtk_box_append(GTK_BOX(login_box), entry);
     gtk_box_append(GTK_BOX(login_box), login_button);
@@ -83,8 +106,8 @@ static void on_activate(GtkApplication *app, gpointer user_data)
     GtkWidget *home_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
     gtk_widget_set_halign(home_box, GTK_ALIGN_CENTER);
     gtk_widget_set_valign(home_box, GTK_ALIGN_CENTER);
-    GtkWidget *join_button = gtk_button_new_with_label("Join Room");
-    GtkWidget *host_button = gtk_button_new_with_label("Host Room");
+    GtkWidget *join_button = gtk_button_new_with_label("Join Room"); //
+    GtkWidget *host_button = gtk_button_new_with_label("Host Room"); //make main() from server a fuction. Call the function here to start a server
     //TODO actually make the buttons do something
 
     gtk_box_append(GTK_BOX(home_box), join_button);
@@ -94,6 +117,7 @@ static void on_activate(GtkApplication *app, gpointer user_data)
     gtk_stack_add_named(GTK_STACK(stack), login_box, "login");
     gtk_stack_add_named(GTK_STACK(stack), home_box, "home");
 
+
     // show login page
     gtk_stack_set_visible_child_name(GTK_STACK(stack), "login");
     gtk_window_present(GTK_WINDOW(window));
@@ -102,7 +126,7 @@ static void on_activate(GtkApplication *app, gpointer user_data)
 int main() {
     struct sockaddr_in server_addr;
     char message[MAX_MSG_LEN];
-    char username[50];
+    //char username[50]; //should not need declaration here now
     pthread_t recv_thread;
 
     // create socket
@@ -142,9 +166,9 @@ int main() {
     printf("connected to server at %s:%d\n", SERVER_IP, SERVER_PORT);
 
     // prompt for username and send it to server
-    printf("enter your username: ");
+    //printf("enter your username: ");
     fgets(username, sizeof(username), stdin);
-    username[strcspn(username, "\n")] = '\0';  // remove newline
+    //username[strcspn(username, "\n")] = '\0';  // remove newline
     send(sockfd, username, strlen(username), 0);
 
     // start thread to receive messages
