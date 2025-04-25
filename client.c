@@ -43,30 +43,60 @@ void* receive_messages(void* arg) {
     return NULL;
 }
 
+static void on_login_button_clicked(GtkButton *button, gpointer data)
+{
+    GtkStack *stack = GTK_STACK(data);
+    //TODO verify name and stuff? (check its not empty)
+    gtk_stack_set_visible_child_name(stack, "home");
+}
+
 // sets up the app when its activated (started)
 static void on_activate(GtkApplication *app, gpointer user_data)
 {
+    // set up window
     GtkWidget *window = gtk_application_window_new(app);
     gtk_window_set_default_size(GTK_WINDOW(window), 900, 800);
     gtk_window_set_title(GTK_WINDOW(window), APP_NAME);
     gtk_window_present(GTK_WINDOW(window));
 
-    // login screen code - GTK
-    GtkWidget *button;
-    GtkWidget *box;
+    // create page stack
+    GtkWidget *stack = gtk_stack_new();
+    gtk_window_set_child(GTK_WINDOW(window), stack); // the stack should always be the window's only child, don't add anything else
+
+    // build login page
+    GtkWidget *login_box;
+    GtkWidget *login_button;
     GtkWidget *entry;
 
-    box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0); // button allignment
-    gtk_widget_set_halign(box, GTK_ALIGN_CENTER);
-    gtk_widget_set_valign(box, GTK_ALIGN_CENTER);
-    gtk_window_set_child(GTK_WINDOW(window), box);
-
+    login_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5); // button allignment
+    gtk_widget_set_halign(login_box, GTK_ALIGN_CENTER);
+    gtk_widget_set_valign(login_box, GTK_ALIGN_CENTER);
     entry = gtk_entry_new();
+    login_button = gtk_button_new_with_label("Login");
 
-    button = gtk_button_new_with_label("Login");
-    g_signal_connect(button, "clicked", G_CALLBACK(button_test), entry);
+    g_signal_connect(login_button, "clicked", G_CALLBACK(on_login_button_clicked), stack);
 
-    gtk_box_append(GTK_BOX(box), button);
+    gtk_box_append(GTK_BOX(login_box), entry);
+    gtk_box_append(GTK_BOX(login_box), login_button);
+
+    // build home page
+    GtkWidget *home_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
+    gtk_widget_set_halign(home_box, GTK_ALIGN_CENTER);
+    gtk_widget_set_valign(home_box, GTK_ALIGN_CENTER);
+    GtkWidget *join_button = gtk_button_new_with_label("Join Room");
+    GtkWidget *host_button = gtk_button_new_with_label("Host Room");
+    //TODO actually make the buttons do something
+
+    gtk_box_append(GTK_BOX(home_box), join_button);
+    gtk_box_append(GTK_BOX(home_box), host_button);
+
+    // add pages to stack
+    gtk_stack_add_named(GTK_STACK(stack), login_box, "login");
+    gtk_stack_add_named(GTK_STACK(stack), home_box, "home");
+
+    // show login page
+    gtk_stack_set_visible_child_name(GTK_STACK(stack), "login");
+    gtk_window_present(GTK_WINDOW(window));
 }
 
 int main() {
