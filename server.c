@@ -1,6 +1,6 @@
 /*
 File: Server Class
-Date: 04/15/2025
+Date: 04/18/2025
 */
 
 #ifdef _WIN32
@@ -21,6 +21,7 @@ Date: 04/15/2025
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <pthread.h>
 
 #define PORT 8080 //Port number for the server
@@ -37,13 +38,22 @@ typedef struct {
 
 Client *clients[MAX_CLIENTS]; //Array to store clients
 pthread_mutex_t clients_mutex = PTHREAD_MUTEX_INITIALIZER; //Mutex for clients list (Mutex prevents race conditions )
+int server_socket; // global for signal handler
 
 void broadcast_message(char *message, SOCKET sender_socket);
 void remove_client(SOCKET socket);
 void *handle_client(void *arg);
 void handle_new_client(SOCKET client_socket, struct sockaddr_in client_addr);
 
-// Handles new client connections
+//Adds timestamps when the Server updates
+void timestamp_log(const char *msg) {
+    time_t now = time(NULL);
+    char tbuf[26];
+    strftime(tbuf, sizeof(tbuf), "%Y-%m-%d %H:%M:%S", localtime(&now));
+    printf("[%s] %s\n", tbuf, msg);
+}
+
+//Handles new client connections
 void handle_new_client(SOCKET client_socket, struct sockaddr_in client_addr) {
     char username[50];
     recv(client_socket, username, sizeof(username), 0);//Receives username from the client
@@ -77,6 +87,7 @@ void handle_new_client(SOCKET client_socket, struct sockaddr_in client_addr) {
 #endif
     free(new_client);
 }
+
 //Handles messages from individual clients
 void *handle_client(void *arg) {
     Client *client = (Client *)arg;
@@ -92,6 +103,7 @@ void *handle_client(void *arg) {
     free(client);
     pthread_exit(NULL);
 }
+
 //Sends message to all connected clients
 void broadcast_message(char *message, SOCKET sender_socket) {
     pthread_mutex_lock(&clients_mutex);
@@ -102,11 +114,19 @@ void broadcast_message(char *message, SOCKET sender_socket) {
     }
     pthread_mutex_unlock(&clients_mutex);
 }
+
 //Removes a disconnected client from the list
 void remove_client(SOCKET socket) {
     pthread_mutex_lock(&clients_mutex);
     for (int i = 0; i < MAX_CLIENTS; i++) {
         if (clients[i] && clients[i]->socket == socket) {
+            char msg[100];
+            snprintf(msg, sizeof(msg), "%s has left the chat.", clients[i]->username);
+            timestamp_log(msg);
+            close(clients[i]->socket);
+            free(clients[i]);
+            clients[i] = NULL;
+            break;
 #ifdef _WIN32
             closesocket(socket);
 #else
@@ -118,6 +138,25 @@ void remove_client(SOCKET socket) {
     }
     pthread_mutex_unlock(&clients_mutex);
 }
+
+//safely shuts the server down when the window is disconnected
+void cleanup_server(int signum) {
+    timestamp_log("Server shutting down...");
+
+    pthread_mutex_lock(&clients_mutex);
+    for (int i = 0; i < MAX_CLIENTS; i++) {
+        if (clients[i]) {
+            close(clients[i]->socket);
+            free(clients[i]);
+            clients[i] = NULL;
+        }
+    }
+    pthread_mutex_unlock(&clients_mutex);
+
+    close(server_socket);
+    exit(0);
+}
+
 //Main function
 int main() {
 #ifdef _WIN32
@@ -151,6 +190,9 @@ int main() {
         exit(EXIT_FAILURE);
     }
     printf("Server started on port %d\n", PORT);
+
+    timestamp_log("Server started."); //timestamp for server start
+
 //Loop for accepting socket
     while (1) {
         addr_size = sizeof(client_addr);
