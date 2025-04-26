@@ -75,19 +75,22 @@ static void on_login_button_clicked(GtkButton *button, gpointer data) {
     // retrieve data from button
     GtkEntry *entry = g_object_get_data(G_OBJECT(button), "entry");
     GtkStack *stack = g_object_get_data(G_OBJECT(button), "stack");
+    GtkWidget *error_label = g_object_get_data(G_OBJECT(button), "error_label");
 
     const char *username = gtk_editable_get_text(GTK_EDITABLE(entry));
-    if (!is_valid_username(username)) // if username is invalid, stop
+    if (!is_valid_username(username)) // if username is invalid, show error label
     {
+        gtk_widget_set_opacity(error_label, 1);
         return;
     }
 
-    //assigns username variable in backend 
-    strcpy(username_global, username);
+     //assigns username variable in backend
+     strcpy(username_global, username);
 
-    //test to verify the username from the text entry in the GUI is assigned to the username variable in backend
-    printf("Username (Global): %s\n", username); //prints to console
+     //test to verify the username from the text entry in the GUI is assigned to the username variable in backend
+     printf("Username (Global): %s\n", username); //prints to console
 
+    gtk_widget_set_opacity(error_label, 0);
     gtk_stack_set_visible_child_name(stack, "chat room");
 }
 
@@ -108,20 +111,25 @@ static void on_activate(GtkApplication *app, gpointer user_data)
     GtkWidget *login_box;
     GtkWidget *login_button;
     GtkWidget *entry; //username entry
+    GtkWidget *error_label;
 
     login_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5); // button allignment
     gtk_widget_set_halign(login_box, GTK_ALIGN_CENTER);
     gtk_widget_set_valign(login_box, GTK_ALIGN_CENTER);
     entry = gtk_entry_new();
     login_button = gtk_button_new_with_label("Login");
+    error_label = gtk_label_new("Username must contain only alphanumeric characters.");
+    gtk_widget_set_opacity(error_label, 0);// initially hide the error label, only showing it if the user enters an invalid username on login
 
-    // to get multiple values into one connected funtion, the entry and stack are set as data in login button, then retrieved in its connected function
+    // to get multiple values into one connected funtion, the entry and stack and error label are set as data in login button, then retrieved in its connected function
     g_object_set_data(G_OBJECT(login_button), "entry", entry);
     g_object_set_data(G_OBJECT(login_button), "stack", stack);
+    g_object_set_data(G_OBJECT(login_button), "error_label", error_label);
     g_signal_connect(login_button, "clicked", G_CALLBACK(on_login_button_clicked), NULL); //calls on-login_button_clicked() when the button is clicked
 
     gtk_box_append(GTK_BOX(login_box), entry);
     gtk_box_append(GTK_BOX(login_box), login_button);
+    gtk_box_append(GTK_BOX(login_box), error_label);
 
     // build chat room page
     GtkWidget *chat_room_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
