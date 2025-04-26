@@ -18,6 +18,7 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <gtk/gtk.h>
+#include <ctype.h>
 
 // server connection details
 #define SERVER_IP "127.0.0.1"
@@ -52,29 +53,38 @@ void* receive_messages(void* arg) {
     return NULL;
 }
 
+// checks whether the provided username is valid or not. a username is valid if it is not empty and is only alphanumeric characters
+static bool is_valid_username(const char *username)
+{
+    if (username == NULL || username[0] == '\0') // return false if string is empty
+    {
+        return false;
+    }
+    for (size_t i = 0; i < strlen(username); i++)
+    {
+        if(!isalnum(username[i]))
+        {
+            return false;
+        }
+    }
+    return true;
+}
 
 //function to retrieve the username entry from the text box when the login_button is clicked
-static void username_retrieve(GtkButton *button, gpointer data) {
-    //retrieve text from entry to store as client username
-    GtkEntry *entry = GTK_ENTRY(data);
+static void on_login_button_clicked(GtkButton *button, gpointer data) {
+    // retrieve data from button
+    GtkEntry *entry = g_object_get_data(G_OBJECT(button), "entry");
+    GtkStack *stack = g_object_get_data(G_OBJECT(button), "stack");
+
     const char *username = gtk_editable_get_text(GTK_EDITABLE(entry));
-    //test
+    if (!is_valid_username(username)) // if username is invalid, stop
+    {
+        return;
+    }
     char *user_text = g_strdup(username);
     g_print("Username: %s\n", user_text);
     g_free(user_text);
-}
 
-static void on_login_button_clicked(GtkButton *button, gpointer data)
-{
-    GtkStack *stack = GTK_STACK(data);
-    //TODO verify name and stuff? (check its not empty)
-    gtk_stack_set_visible_child_name(stack, "home");
-}
-
-static void on_join_room_button_clicked(GtkButton *button, gpointer data)
-{
-    GtkStack *stack = GTK_STACK(data);
-    //TODO verify name and stuff? (check its not empty)
     gtk_stack_set_visible_child_name(stack, "chat room");
 }
 
@@ -102,26 +112,13 @@ static void on_activate(GtkApplication *app, gpointer user_data)
     entry = gtk_entry_new();
     login_button = gtk_button_new_with_label("Login");
 
-    //login_button functions
-    g_signal_connect(login_button, "clicked", G_CALLBACK(on_login_button_clicked), stack); //calls on-login_button_fixed() when the button is clicked
-    g_signal_connect(login_button, "clicked", G_CALLBACK(username_retrieve), entry); //calls username_retrieve() when the button is clicked
+    // to get multiple values into one connected funtion, the entry and stack are set as data in login button, then retrieved in its connected function
+    g_object_set_data(G_OBJECT(login_button), "entry", entry);
+    g_object_set_data(G_OBJECT(login_button), "stack", stack);
+    g_signal_connect(login_button, "clicked", G_CALLBACK(on_login_button_clicked), NULL); //calls on-login_button_clicked() when the button is clicked
 
     gtk_box_append(GTK_BOX(login_box), entry);
     gtk_box_append(GTK_BOX(login_box), login_button);
-
-    // build home page
-    GtkWidget *home_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
-    gtk_widget_set_halign(home_box, GTK_ALIGN_CENTER);
-    gtk_widget_set_valign(home_box, GTK_ALIGN_CENTER);
-    GtkWidget *join_button = gtk_button_new_with_label("Join Room"); //
-    GtkWidget *host_button = gtk_button_new_with_label("Host Room"); //make main() from server a fuction. Call the function here to start a server
-
-    //TODO actually make the buttons do something
-    g_signal_connect(join_button, "clicked", G_CALLBACK(on_join_room_button_clicked), stack); //calls on_join_room_button_clicked when the button is clicked
-
-    gtk_box_append(GTK_BOX(home_box), join_button);
-    gtk_box_append(GTK_BOX(home_box), host_button);
-
 
     // build chat room page
     GtkWidget *chat_room_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
@@ -133,7 +130,6 @@ static void on_activate(GtkApplication *app, gpointer user_data)
 
     // add pages to stack
     gtk_stack_add_named(GTK_STACK(stack), login_box, "login");
-    gtk_stack_add_named(GTK_STACK(stack), home_box, "home");
     gtk_stack_add_named(GTK_STACK(stack), chat_room_box, "chat room");
 
 
