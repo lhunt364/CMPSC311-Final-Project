@@ -29,7 +29,7 @@
 #define APP_NAME "Chat App"
 
 int sockfd; // socket file descriptor
-char username[50]; //username variable to store username entry from GUI
+char username_global[50]; //username variable to store username entry from GUI
 
 
 // thread to receive messages from server
@@ -81,9 +81,12 @@ static void on_login_button_clicked(GtkButton *button, gpointer data) {
     {
         return;
     }
-    char *user_text = g_strdup(username);
-    g_print("Username: %s\n", user_text);
-    g_free(user_text);
+
+    //assigns username variable in backend 
+    strcpy(username_global, username);
+
+    //test to verify the username from the text entry in the GUI is assigned to the username variable in backend
+    printf("Username (Global): %s\n", username); //prints to console
 
     gtk_stack_set_visible_child_name(stack, "chat room");
 }
@@ -183,9 +186,9 @@ int main() {
 
     // prompt for username and send it to server
     //printf("enter your username: ");
-    fgets(username, sizeof(username), stdin);
+    fgets(username_global, sizeof(username_global), stdin);
     //username[strcspn(username, "\n")] = '\0';  // remove newline
-    send(sockfd, username, strlen(username), 0);
+    send(sockfd, username_global, strlen(username_global), 0);
 
     // start thread to receive messages
     pthread_create(&recv_thread, NULL, receive_messages, NULL);
