@@ -46,8 +46,8 @@ void* receive_messages(void* arg) {
 
         buffer[bytes] = '\0';
         printf("\n%s", buffer);  // message already includes username
-        printf("you: ");
         fflush(stdout);
+        //TODO update this function so that messages are printed into the chat log
     }
 
     return NULL;
@@ -94,6 +94,50 @@ static void on_login_button_clicked(GtkButton *button, gpointer data) {
     gtk_stack_set_visible_child_name(stack, "chat room");
 }
 
+static void on_message_sent(GtkEntry *entry, gpointer data)
+{
+    const char *text = gtk_editable_get_text((GTK_EDITABLE(entry)));
+    GtkTextIter iter;
+    GtkStack *stack = GTK_STACK(data);
+    GtkTextBuffer *buffer = g_object_get_data(G_OBJECT(entry), "buffer");
+    GtkTextView *view = GTK_TEXT_VIEW(g_object_get_data(G_OBJECT(entry), "text_view"));
+
+    if (*text == '\0')
+    {
+        return; // ignore empty inputs
+    }
+
+    // TODO send message to server
+
+    // append the new message onto the buffer
+    gtk_text_buffer_get_end_iter(buffer, &iter);
+    gtk_text_buffer_insert(buffer, &iter, username_global, -1);
+    gtk_text_buffer_insert(buffer, &iter, ": ", 2);
+    gtk_text_buffer_insert(buffer, &iter, text, -1);
+    gtk_text_buffer_insert(buffer, &iter, "\n", 1);
+
+    // scroll to bottom
+    GtkTextMark *mark = gtk_text_buffer_create_mark(buffer, NULL, &iter, false);
+    gtk_text_view_scroll_to_mark(view, mark, 0, false, 0, 1);
+
+    // clear the input box text for next message
+    gtk_editable_set_text(GTK_EDITABLE(entry), "");
+}
+
+static void on_leave_button_clicked(GtkButton *button, gpointer data)
+{
+    GtkStack *stack = g_object_get_data(G_OBJECT(button), "stack");
+    GtkEntry *msg_entry = g_object_get_data(G_OBJECT(button), "msg_entry");
+    GtkTextBuffer *buffer = g_object_get_data(G_OBJECT(button), "buffer");
+
+    // clear chat history and message entry
+    gtk_text_buffer_set_text(buffer, "", -1);
+    gtk_editable_set_text(GTK_EDITABLE(msg_entry), "");
+
+    // go back to login page
+    gtk_stack_set_visible_child_name(stack, "login");
+}
+
 // sets up the app when its activated (started)
 static void on_activate(GtkApplication *app, gpointer user_data)
 {
@@ -105,6 +149,12 @@ static void on_activate(GtkApplication *app, gpointer user_data)
 
     // create page stack
     GtkWidget *stack = gtk_stack_new();
+    gtk_widget_set_hexpand(stack, TRUE); // expand the stack to the whole window
+    gtk_widget_set_vexpand(stack, TRUE);
+    gtk_widget_set_margin_start(stack, 15); // add padding around the edges
+    gtk_widget_set_margin_end(stack, 15);
+    gtk_widget_set_margin_top(stack, 15);
+    gtk_widget_set_margin_bottom(stack, 15);
     gtk_window_set_child(GTK_WINDOW(window), stack); // the stack should always be the window's only child, don't add anything else
 
     // build login page
@@ -121,7 +171,7 @@ static void on_activate(GtkApplication *app, gpointer user_data)
     error_label = gtk_label_new("Username must contain only alphanumeric characters.");
     gtk_widget_set_opacity(error_label, 0);// initially hide the error label, only showing it if the user enters an invalid username on login
 
-    // to get multiple values into one connected funtion, the entry and stack and error label are set as data in login button, then retrieved in its connected function
+        // to get multiple values into one connected funtion, the entry and stack and error label are set as data in login button, then retrieved in its connected function
     g_object_set_data(G_OBJECT(login_button), "entry", entry);
     g_object_set_data(G_OBJECT(login_button), "stack", stack);
     g_object_set_data(G_OBJECT(login_button), "error_label", error_label);
@@ -131,13 +181,43 @@ static void on_activate(GtkApplication *app, gpointer user_data)
     gtk_box_append(GTK_BOX(login_box), login_button);
     gtk_box_append(GTK_BOX(login_box), error_label);
 
+
     // build chat room page
     GtkWidget *chat_room_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
-    gtk_widget_set_halign(chat_room_box, GTK_ALIGN_CENTER);
-    gtk_widget_set_valign(chat_room_box, GTK_ALIGN_CENTER);
+    gtk_widget_set_hexpand(chat_room_box, TRUE);
+    gtk_widget_set_vexpand(chat_room_box, TRUE);
+    gtk_widget_set_halign(chat_room_box, GTK_ALIGN_FILL);
+    gtk_widget_set_valign(chat_room_box, GTK_ALIGN_FILL);
 
+        // message print area
+    GtkWidget *scroller  = gtk_scrolled_window_new();
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroller), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
+    gtk_widget_set_hexpand(scroller, TRUE);
+    gtk_widget_set_vexpand(scroller, TRUE);
+    GtkWidget *text_view = gtk_text_view_new();
+    gtk_text_view_set_editable(GTK_TEXT_VIEW(text_view), FALSE);
+    gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scroller), text_view);
 
+        // bottom row (message input and leave button)
+    GtkWidget *input_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
+    gtk_widget_set_hexpand(input_row, TRUE);
+    GtkWidget *msg_entry = gtk_entry_new();
+    gtk_widget_set_hexpand(msg_entry, TRUE);
+    GtkTextBuffer *buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(text_view));
+    g_object_set_data(G_OBJECT(msg_entry), "buffer", buffer);
+    g_object_set_data(G_OBJECT(msg_entry), "text_view", text_view);
+    GtkWidget *leave_button = gtk_button_new_with_label("Leave");
+    g_object_set_data(G_OBJECT(leave_button), "stack", stack);
+    g_object_set_data(G_OBJECT(leave_button), "buffer", buffer);
+    g_object_set_data(G_OBJECT(leave_button), "msg_entry", msg_entry);
 
+    g_signal_connect(msg_entry, "activate", G_CALLBACK(on_message_sent), stack);
+    g_signal_connect(leave_button, "clicked", G_CALLBACK(on_leave_button_clicked), stack);
+
+    gtk_box_append(GTK_BOX(input_row), msg_entry);
+    gtk_box_append(GTK_BOX(input_row), leave_button);
+    gtk_box_append(GTK_BOX(chat_room_box), scroller);
+    gtk_box_append(GTK_BOX(chat_room_box), input_row);
 
     // add pages to stack
     gtk_stack_add_named(GTK_STACK(stack), login_box, "login");
