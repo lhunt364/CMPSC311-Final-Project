@@ -90,8 +90,7 @@ void* receive_messages(void* arg) {
         int bytes = recv(sockfd, buffer, sizeof(buffer) - 1, 0);
         if (bytes <= 0) {
             printf("server disconnected.\n");
-            close(sockfd);
-            sockfd = -1;
+            recv_running = false;
             g_idle_add(show_login_page, NULL);
         }
 
@@ -186,7 +185,11 @@ static void on_message_sent(GtkEntry *entry, gpointer data)
     }
 
     // send message to server
-    send(sockfd, text, strlen(text), 0);
+    if (send(sockfd, text, strlen(text), 0) <= 0)
+    {
+        g_idle_add(show_login_page, NULL);
+        return;
+    }
 
     // append the new message onto the buffer
     gtk_text_buffer_get_end_iter(global_chat_buffer, &iter);
