@@ -123,6 +123,7 @@ void handle_new_client(int client_socket, struct sockaddr_in client_addr) {
 
     username[strcspn(username, "\n")] = 0;
 
+    /*
     pthread_mutex_lock(&clients_mutex);
     if (!is_username_unique(username)) {
         send(client_socket, "Username already taken.\n", 25, 0);
@@ -130,6 +131,7 @@ void handle_new_client(int client_socket, struct sockaddr_in client_addr) {
         pthread_mutex_unlock(&clients_mutex);
         return;
     }
+    */
 
     for (int i = 0; i < MAX_CLIENTS; ++i) {
         if (!clients[i]) {
@@ -160,6 +162,7 @@ void handle_new_client(int client_socket, struct sockaddr_in client_addr) {
 void cleanup_server(int signo) {
     timestamp_log("Server shutting down...");
 
+    /*
     if(signo == SIGINT) {
         pthread_mutex_lock(&clients_mutex);
         for (int i = 0; i < MAX_CLIENTS; i++) {
@@ -170,7 +173,7 @@ void cleanup_server(int signo) {
             }
         }
     }
-    pthread_mutex_unlock(&clients_mutex);
+    pthread_mutex_unlock(&clients_mutex);*/
 
     close(server_socket);
     exit(0);
