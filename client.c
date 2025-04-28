@@ -18,6 +18,7 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <gtk/gtk.h>
+#include <sys/socket.h>
 #include <ctype.h>
 
 // server connection details
@@ -30,26 +31,76 @@
 
 int sockfd; // socket file descriptor
 char username_global[50]; //username variable to store username entry from GUI
+GtkTextBuffer *global_chat_buffer; // chat box components
+GtkTextView *global_chat_view;
+GtkWidget *msg_entry;
+GtkWidget *stack; // page stack
+pthread_t recv_thread; // the receive messages thread
+bool recv_running = false;
 
+
+// appends the message (data) to the chat buffer. this is only called from the gtk main loop after being attached in receive_messages()
+static gboolean append_message_to_buffer(gpointer data)
+{
+    GtkTextIter iter;
+    char *message = data;
+
+    // append message to buffer
+    gtk_text_buffer_get_end_iter(global_chat_buffer, &iter);
+    gtk_text_buffer_insert(global_chat_buffer, &iter, message, -1);
+    gtk_text_buffer_insert(global_chat_buffer, &iter, "\n", 1);
+
+    // scroll to bottom
+    GtkTextMark *mark = gtk_text_buffer_create_mark(global_chat_buffer, NULL, &iter, false);
+    gtk_text_view_scroll_to_mark(global_chat_view, mark, 0, false, 0, 1);
+
+    g_free(message);
+    return G_SOURCE_REMOVE; // remove function from gtk main loop
+
+}
+
+// go back to the login page and clean up
+static gboolean show_login_page(gpointer data)
+{
+    if (recv_running)
+    {
+        recv_running = false;
+        shutdown(sockfd, SHUT_RDWR);
+        close(sockfd);
+        sockfd = -1;
+        pthread_join(recv_thread, NULL);
+    }
+
+    // clear chat history and message entry
+    gtk_text_buffer_set_text(global_chat_buffer, "", -1);
+    gtk_editable_set_text(GTK_EDITABLE(msg_entry), "");
+
+    // go back to login page
+    gtk_stack_set_visible_child_name(GTK_STACK(stack), "login");
+
+    return G_SOURCE_REMOVE;
+}
 
 // thread to receive messages from server
 void* receive_messages(void* arg) {
     char buffer[MAX_MSG_LEN];
 
-    while (1) {
+    recv_running = true;
+    while (recv_running) {
         int bytes = recv(sockfd, buffer, sizeof(buffer) - 1, 0);
         if (bytes <= 0) {
             printf("server disconnected.\n");
             close(sockfd);
-            exit(1);
+            sockfd = -1;
+            g_idle_add(show_login_page, NULL);
         }
 
         buffer[bytes] = '\0';
-        printf("\n%s", buffer);  // message already includes username
-        fflush(stdout);
-        //TODO update this function so that messages are printed into the chat log
+        // this appends the message to the chat buffer. it has to go through gtk's thread or it kicks and screams
+        g_idle_add(append_message_to_buffer, g_strdup(buffer));
     }
 
+    recv_running = false;
     return NULL;
 }
 
@@ -84,12 +135,41 @@ static void on_login_button_clicked(GtkButton *button, gpointer data) {
         return;
     }
 
-     //assigns username variable in backend
-     strcpy(username_global, username);
+    //assigns username variable in backend
+    strcpy(username_global, username);
 
-     //test to verify the username from the text entry in the GUI is assigned to the username variable in backend
-     printf("Username (Global): %s\n", username); //prints to console
+    //test to verify the username from the text entry in the GUI is assigned to the username variable in backend
+    printf("Username (Global): %s\n", username); //prints to console
 
+    // server connection
+
+    // create socket
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd < 0) {
+        perror("socket creation failed");
+        return;
+    }
+
+    struct sockaddr_in server_addr;
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(SERVER_PORT);
+    server_addr.sin_addr.s_addr = inet_addr(SERVER_IP);
+
+    // connect to server
+    if (connect(sockfd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
+        perror("connection failed");
+        return;
+    }
+    printf("connected to server at %s:%d\n", SERVER_IP, SERVER_PORT);
+
+    // send username to server
+    // username[strcspn(username, "\n")] = '\0';  // remove newline
+    send(sockfd, username_global, strlen(username_global), 0);
+
+    // start thread to receive messages
+    pthread_create(&recv_thread, NULL, receive_messages, NULL);
+
+    // go to chat room
     gtk_widget_set_opacity(error_label, 0);
     gtk_stack_set_visible_child_name(stack, "chat room");
 }
@@ -99,26 +179,25 @@ static void on_message_sent(GtkEntry *entry, gpointer data)
     const char *text = gtk_editable_get_text((GTK_EDITABLE(entry)));
     GtkTextIter iter;
     GtkStack *stack = GTK_STACK(data);
-    GtkTextBuffer *buffer = g_object_get_data(G_OBJECT(entry), "buffer");
-    GtkTextView *view = GTK_TEXT_VIEW(g_object_get_data(G_OBJECT(entry), "text_view"));
 
     if (*text == '\0')
     {
         return; // ignore empty inputs
     }
 
-    // TODO send message to server
+    // send message to server
+    send(sockfd, text, strlen(text), 0);
 
     // append the new message onto the buffer
-    gtk_text_buffer_get_end_iter(buffer, &iter);
-    gtk_text_buffer_insert(buffer, &iter, username_global, -1);
-    gtk_text_buffer_insert(buffer, &iter, ": ", 2);
-    gtk_text_buffer_insert(buffer, &iter, text, -1);
-    gtk_text_buffer_insert(buffer, &iter, "\n", 1);
+    gtk_text_buffer_get_end_iter(global_chat_buffer, &iter);
+    gtk_text_buffer_insert(global_chat_buffer, &iter, username_global, -1);
+    gtk_text_buffer_insert(global_chat_buffer, &iter, ": ", 2);
+    gtk_text_buffer_insert(global_chat_buffer, &iter, text, -1);
+    gtk_text_buffer_insert(global_chat_buffer, &iter, "\n\n", 2);
 
     // scroll to bottom
-    GtkTextMark *mark = gtk_text_buffer_create_mark(buffer, NULL, &iter, false);
-    gtk_text_view_scroll_to_mark(view, mark, 0, false, 0, 1);
+    GtkTextMark *mark = gtk_text_buffer_create_mark(global_chat_buffer, NULL, &iter, false);
+    gtk_text_view_scroll_to_mark(global_chat_view, mark, 0, false, 0, 1);
 
     // clear the input box text for next message
     gtk_editable_set_text(GTK_EDITABLE(entry), "");
@@ -126,16 +205,7 @@ static void on_message_sent(GtkEntry *entry, gpointer data)
 
 static void on_leave_button_clicked(GtkButton *button, gpointer data)
 {
-    GtkStack *stack = g_object_get_data(G_OBJECT(button), "stack");
-    GtkEntry *msg_entry = g_object_get_data(G_OBJECT(button), "msg_entry");
-    GtkTextBuffer *buffer = g_object_get_data(G_OBJECT(button), "buffer");
-
-    // clear chat history and message entry
-    gtk_text_buffer_set_text(buffer, "", -1);
-    gtk_editable_set_text(GTK_EDITABLE(msg_entry), "");
-
-    // go back to login page
-    gtk_stack_set_visible_child_name(stack, "login");
+    g_idle_add(show_login_page, NULL);
 }
 
 // sets up the app when its activated (started)
@@ -148,7 +218,7 @@ static void on_activate(GtkApplication *app, gpointer user_data)
     gtk_window_present(GTK_WINDOW(window));
 
     // create page stack
-    GtkWidget *stack = gtk_stack_new();
+    stack = gtk_stack_new();
     gtk_widget_set_hexpand(stack, TRUE); // expand the stack to the whole window
     gtk_widget_set_vexpand(stack, TRUE);
     gtk_widget_set_margin_start(stack, 15); // add padding around the edges
@@ -197,22 +267,22 @@ static void on_activate(GtkApplication *app, gpointer user_data)
     GtkWidget *text_view = gtk_text_view_new();
     gtk_text_view_set_editable(GTK_TEXT_VIEW(text_view), FALSE);
     gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scroller), text_view);
+    global_chat_buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(text_view));
+    global_chat_view = GTK_TEXT_VIEW(text_view);
 
         // bottom row (message input and leave button)
     GtkWidget *input_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
     gtk_widget_set_hexpand(input_row, TRUE);
-    GtkWidget *msg_entry = gtk_entry_new();
+    msg_entry = gtk_entry_new();
     gtk_widget_set_hexpand(msg_entry, TRUE);
     GtkTextBuffer *buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(text_view));
     g_object_set_data(G_OBJECT(msg_entry), "buffer", buffer);
     g_object_set_data(G_OBJECT(msg_entry), "text_view", text_view);
     GtkWidget *leave_button = gtk_button_new_with_label("Leave");
-    g_object_set_data(G_OBJECT(leave_button), "stack", stack);
-    g_object_set_data(G_OBJECT(leave_button), "buffer", buffer);
     g_object_set_data(G_OBJECT(leave_button), "msg_entry", msg_entry);
 
     g_signal_connect(msg_entry, "activate", G_CALLBACK(on_message_sent), stack);
-    g_signal_connect(leave_button, "clicked", G_CALLBACK(on_leave_button_clicked), stack);
+    g_signal_connect(leave_button, "clicked", G_CALLBACK(show_login_page), NULL);
 
     gtk_box_append(GTK_BOX(input_row), msg_entry);
     gtk_box_append(GTK_BOX(input_row), leave_button);
@@ -231,27 +301,6 @@ static void on_activate(GtkApplication *app, gpointer user_data)
 }
 
 int main() {
-    struct sockaddr_in server_addr;
-    char message[MAX_MSG_LEN];
-    //char username[50]; //should not need declaration here now
-    pthread_t recv_thread;
-
-    // create socket
-    sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (sockfd < 0) {
-        perror("socket creation failed");
-        exit(1);
-    }
-
-    // configure server address
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(SERVER_PORT);
-    server_addr.sin_addr.s_addr = inet_addr(SERVER_IP);
-
-
-
-
-
     // set up app window
     GtkApplication *app;
     //g_signal_conenct_(app, "destroy", G_CALLBACK(gtk_main_quit), NULL);
@@ -259,35 +308,6 @@ int main() {
     g_signal_connect(app, "activate", G_CALLBACK(on_activate), NULL); // app is set up in the on_activate function
     g_application_run(G_APPLICATION(app), 0, NULL);
     g_object_unref(app);
-
-
-
-
-
-    // connect to server
-    if (connect(sockfd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
-        perror("connection failed");
-        exit(1);
-    }
-
-    printf("connected to server at %s:%d\n", SERVER_IP, SERVER_PORT);
-
-    // prompt for username and send it to server
-    //printf("enter your username: ");
-    fgets(username_global, sizeof(username_global), stdin);
-    //username[strcspn(username, "\n")] = '\0';  // remove newline
-    send(sockfd, username_global, strlen(username_global), 0);
-
-    // start thread to receive messages
-    pthread_create(&recv_thread, NULL, receive_messages, NULL);
-
-    // loop to send messages
-    while (1) {
-        printf("you: ");
-        if (fgets(message, MAX_MSG_LEN, stdin) != NULL) {
-            send(sockfd, message, strlen(message), 0);
-        }
-    }
 
     return 0;
 }
